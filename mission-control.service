@@ -1,0 +1,15 @@
+[Unit]
+Description=Mission Control Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=pro
+WorkingDirectory=/home/pro/.openclaw/workspace/mission-control
+ExecStart=/usr/bin/node /home/pro/.openclaw/workspace/mission-control/server.js
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
