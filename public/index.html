@@ -358,13 +358,30 @@
             <div id="pnl-summary"></div>
           </div>
         </div>
+        <!-- Traditional / TradFi Accounts -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="fa-solid fa-landmark"></i> Traditional Accounts</h3>
+            <button class="btn btn-sm" onclick="toggleTradFiForm()"><i class="fa-solid fa-plus"></i> Add Account</button>
+          </div>
+          <div id="tradfi-form-container" style="display:none;margin-bottom:16px">
+            <div class="inline-form">
+              <div class="form-group"><label>Account Name</label><input type="text" id="tf-name" class="input" placeholder="Brokerage, 401k, etc."></div>
+              <div class="form-group"><label>Total Balance ($)</label><input type="number" id="tf-balance" class="input" step="any" placeholder="50000"></div>
+              <div class="form-group"><label>Cost Basis ($)</label><input type="number" id="tf-cost" class="input" step="any" placeholder="40000"></div>
+              <div class="form-group"><label>Description</label><input type="text" id="tf-desc" class="input" placeholder="Optional notes"></div>
+              <button class="btn btn-primary" onclick="addTradFiAccount()" style="margin-bottom:0;align-self:end">Save</button>
+            </div>
+          </div>
+          <div id="tradfi-holdings-table" style="overflow-x:auto"></div>
+        </div>
         <div class="grid grid-2">
           <div class="card">
-            <div class="card-header"><h3 class="card-title"><i class="fa-solid fa-landmark"></i> TradFi</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="fa-solid fa-landmark"></i> TradFi Markets</h3></div>
             <div id="tradfi-market" style="max-height:400px;overflow-y:auto"></div>
           </div>
           <div class="card">
-            <div class="card-header"><h3 class="card-title"><i class="fa-brands fa-bitcoin"></i> Crypto</h3></div>
+            <div class="card-header"><h3 class="card-title"><i class="fa-brands fa-bitcoin"></i> Crypto Markets</h3></div>
             <div id="crypto-market" style="max-height:400px;overflow-y:auto"></div>
           </div>
         </div>

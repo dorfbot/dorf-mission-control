@@ -488,9 +488,12 @@ function renderMarketTable(data, id, isTradfi) {
 let portfolioData = null;
 async function loadPortfolio() {
   portfolioData = await api('/portfolio');
+  await loadTradFiAccounts();
   renderHoldings();
   renderProjectGoals('portfolio', 'portfolio-goals');
   renderMarketTables();
+  // Auto-update portfolio recovery goal
+  updatePortfolioGoal();
 }
 
 function togglePortfolioForm() {
@@ -542,37 +545,46 @@ function renderHoldings() {
     </tr>`).join('')
   }</tbody></table>`;
 
-  // P&L Summary
-  const totalPnl = totalValue - totalCost;
+  // P&L Summary — combined crypto + tradfi
+  const tradfiValue = tradfiAccounts.reduce((sum, a) => sum + (a.total_balance || 0), 0);
+  const tradfiCost = tradfiAccounts.reduce((sum, a) => sum + (a.cost_basis || 0), 0);
+  const combinedValue = totalValue + tradfiValue;
+  const combinedCost = totalCost + tradfiCost;
+  const combinedPnl = combinedValue - combinedCost;
   const pnlEl = document.getElementById('pnl-summary');
   if (pnlEl) {
     pnlEl.innerHTML = `
       <div style="text-align:center;padding:20px">
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">Total Value</div>
-        <div style="font-size:28px;font-weight:800;color:var(--accent-blue)">$${totalValue.toFixed(2)}</div>
-        <div style="font-size:13px;color:var(--text-muted);margin-top:12px;margin-bottom:4px">Total P&L</div>
-        <div style="font-size:24px;font-weight:700" class="${totalPnl >= 0 ? 'positive' : 'negative'}">${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Cost basis: $${totalCost.toFixed(2)}</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:4px">Total Portfolio Value</div>
+        <div style="font-size:28px;font-weight:800;color:var(--accent-blue)">$${combinedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Crypto: $${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} · TradFi: $${tradfiValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:16px;margin-bottom:4px">Total P&L</div>
+        <div style="font-size:24px;font-weight:700" class="${combinedPnl >= 0 ? 'positive' : 'negative'}">${combinedPnl >= 0 ? '+' : ''}$${combinedPnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Cost basis: $${combinedCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
       </div>
     `;
   }
 
-  // Allocation chart
-  renderAllocationChart(rows);
+  // Allocation chart — include tradfi accounts
+  const allAllocations = [
+    ...rows.map(r => ({ label: r.symbol.toUpperCase(), value: r.value })),
+    ...(tradfiAccounts || []).map(a => ({ label: a.account_name, value: a.total_balance }))
+  ];
+  renderAllocationChart(allAllocations);
 }
 
-function renderAllocationChart(rows) {
+function renderAllocationChart(items) {
   const canvas = document.getElementById('chart-allocation');
   if (!canvas) return;
   if (charts.allocation) charts.allocation.destroy();
-  const data = rows.filter(r => r.value > 0);
+  const data = items.filter(i => i.value > 0);
   if (!data.length) return;
-  const colors = ['#58a6ff', '#3fb950', '#a371f7', '#d29922', '#f85149', '#db6d28', '#39d2c0', '#8b949e'];
+  const colors = ['#58a6ff', '#3fb950', '#a371f7', '#d29922', '#f85149', '#db6d28', '#39d2c0', '#8b949e', '#e3b341', '#56d4dd', '#f778ba', '#7ee787'];
   charts.allocation = new Chart(canvas, {
     type: 'doughnut',
     data: {
-      labels: data.map(r => r.symbol.toUpperCase()),
-      datasets: [{ data: data.map(r => r.value), backgroundColor: colors.slice(0, data.length), borderWidth: 0 }]
+      labels: data.map(i => i.label),
+      datasets: [{ data: data.map(i => i.value), backgroundColor: colors.slice(0, data.length), borderWidth: 0 }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -585,6 +597,119 @@ async function deleteHolding(id) {
   if (!confirm('Remove this holding?')) return;
   await api(`/portfolio/${id}`, { method: 'DELETE' });
   loadPortfolio();
+}
+
+// ===== Traditional / TradFi Accounts =====
+let tradfiAccounts = [];
+
+function toggleTradFiForm() {
+  const el = document.getElementById('tradfi-form-container');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function loadTradFiAccounts() {
+  tradfiAccounts = await api('/portfolio/traditional');
+  renderTradFiHoldings();
+}
+
+async function addTradFiAccount() {
+  const name = document.getElementById('tf-name').value.trim();
+  const balance = parseFloat(document.getElementById('tf-balance').value) || 0;
+  const cost = parseFloat(document.getElementById('tf-cost').value) || 0;
+  const desc = document.getElementById('tf-desc').value.trim();
+  if (!name) return;
+  await api('/portfolio/traditional', { method: 'POST', body: JSON.stringify({ account_name: name, total_balance: balance, cost_basis: cost, description: desc }) });
+  document.getElementById('tf-name').value = '';
+  document.getElementById('tf-balance').value = '';
+  document.getElementById('tf-cost').value = '';
+  document.getElementById('tf-desc').value = '';
+  toggleTradFiForm();
+  loadPortfolio();
+}
+
+async function updateTradFiBalance(id) {
+  const input = document.getElementById(`tf-bal-${id}`);
+  const newBal = parseFloat(input.value);
+  if (isNaN(newBal)) return;
+  await api(`/portfolio/traditional/${id}`, { method: 'PUT', body: JSON.stringify({ total_balance: newBal }) });
+  showToast('Balance updated');
+  loadPortfolio();
+}
+
+async function deleteTradFiAccount(id) {
+  if (!confirm('Remove this account?')) return;
+  await api(`/portfolio/traditional/${id}`, { method: 'DELETE' });
+  loadPortfolio();
+}
+
+function renderTradFiHoldings() {
+  const el = document.getElementById('tradfi-holdings-table');
+  if (!el) return;
+  if (!tradfiAccounts?.length) { el.innerHTML = '<div class="empty-state"><p>No traditional accounts. Add your brokerage, 401k, etc.</p></div>'; return; }
+
+  let totalValue = 0, totalCost = 0;
+  tradfiAccounts.forEach(a => { totalValue += a.total_balance; totalCost += a.cost_basis; });
+  const totalPnl = totalValue - totalCost;
+  const totalPnlPct = totalCost > 0 ? ((totalPnl / totalCost) * 100) : 0;
+
+  el.innerHTML = `<table class="data-table"><thead><tr><th>Account</th><th style="text-align:right">Balance</th><th style="text-align:right">Cost Basis</th><th style="text-align:right">P&L</th><th style="text-align:right">Update</th><th></th></tr></thead><tbody>${
+    tradfiAccounts.map(a => {
+      const pnl = a.total_balance - a.cost_basis;
+      const pnlPct = a.cost_basis > 0 ? ((pnl / a.cost_basis) * 100) : 0;
+      return `<tr>
+        <td><strong>${esc(a.account_name)}</strong>${a.description ? ` <span style="color:var(--text-muted);font-size:11px">${esc(a.description)}</span>` : ''}</td>
+        <td style="text-align:right">$${a.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="text-align:right">$${a.cost_basis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="text-align:right" class="${pnl >= 0 ? 'positive' : 'negative'}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%)</td>
+        <td style="text-align:right"><div style="display:flex;gap:4px;justify-content:flex-end"><input type="number" id="tf-bal-${a.id}" class="input" style="width:120px;margin:0;padding:4px 8px;font-size:12px" value="${a.total_balance}" step="any"><button class="btn btn-sm" onclick="updateTradFiBalance(${a.id})" title="Update"><i class="fa-solid fa-check"></i></button></div></td>
+        <td><button class="btn btn-sm btn-danger" onclick="deleteTradFiAccount(${a.id})" title="Remove"><i class="fa-solid fa-trash"></i></button></td>
+      </tr>`;
+    }).join('')
+  }
+  <tr style="border-top:2px solid var(--border-color);font-weight:700">
+    <td>Total Traditional</td>
+    <td style="text-align:right">$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+    <td style="text-align:right">$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+    <td style="text-align:right" class="${totalPnl >= 0 ? 'positive' : 'negative'}">${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)} (${totalPnlPct.toFixed(1)}%)</td>
+    <td colspan="2"></td>
+  </tr></tbody></table>`;
+}
+
+// ===== Auto-update Portfolio Recovery Goal =====
+async function updatePortfolioGoal() {
+  if (!portfolioData || !goals.length) return;
+  const { holdings, crypto } = portfolioData;
+
+  // Compute crypto value
+  let cryptoValue = 0;
+  (holdings || []).forEach(h => {
+    const cm = (crypto || []).find(c => c.symbol.toLowerCase() === h.symbol.toLowerCase());
+    cryptoValue += h.amount * (cm?.price || 0);
+  });
+
+  // Compute tradfi value
+  const tradfiValue = (tradfiAccounts || []).reduce((sum, a) => sum + (a.total_balance || 0), 0);
+  const totalValue = cryptoValue + tradfiValue;
+
+  // Update portfolio recovery goal (target: $2M)
+  const portfolioGoal = goals.find(g => g.project === 'portfolio');
+  if (portfolioGoal) {
+    const target = 2000000;
+    const pct = Math.min(100, Math.round((totalValue / target) * 100));
+    // Only update if value changed
+    if (portfolioGoal.target_value !== target || Math.abs(portfolioGoal.current_value - pct) >= 1) {
+      await api(`/goals/${portfolioGoal.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          current_value: pct,
+          target_value: 100,
+          goal: 'Portfolio Recovery',
+          description: `$${totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} / $2,000,000 target`
+        })
+      });
+      await loadGoals();
+    }
+  }
 }
 
 // ===== Activity Feed =====

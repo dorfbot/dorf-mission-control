@@ -86,6 +86,15 @@ db.exec(`
     metadata TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS portfolio_traditional (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_name TEXT NOT NULL,
+    total_balance REAL DEFAULT 0,
+    cost_basis REAL DEFAULT 0,
+    description TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Seed goals if empty

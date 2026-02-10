@@ -184,6 +184,47 @@ app.delete('/api/portfolio/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// ===== Traditional Portfolio (Stocks/ETFs - Total Balance Only) =====
+app.get('/api/portfolio/traditional', (req, res) => {
+  res.json(db.prepare('SELECT * FROM portfolio_traditional ORDER BY account_name').all());
+});
+
+app.post('/api/portfolio/traditional', (req, res) => {
+  const { account_name, total_balance, cost_basis, description } = req.body;
+  try {
+    const result = db.prepare(`
+      INSERT INTO portfolio_traditional (account_name, total_balance, cost_basis, description)
+      VALUES (?, ?, ?, ?)
+    `).run(account_name, total_balance || 0, cost_basis || 0, description);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/portfolio/traditional/:id', (req, res) => {
+  const { account_name, total_balance, cost_basis, description } = req.body;
+  try {
+    db.prepare(`
+      UPDATE portfolio_traditional 
+      SET account_name=COALESCE(?,account_name), 
+          total_balance=COALESCE(?,total_balance), 
+          cost_basis=COALESCE(?,cost_basis), 
+          description=COALESCE(?,description),
+          updated_at=CURRENT_TIMESTAMP 
+      WHERE id=?
+    `).run(account_name, total_balance, cost_basis, description, req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/portfolio/traditional/:id', (req, res) => {
+  db.prepare('DELETE FROM portfolio_traditional WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 // ===== Market =====
 app.get('/api/market', async (req, res) => {
   try { res.json(await getCryptoMarket()); }
